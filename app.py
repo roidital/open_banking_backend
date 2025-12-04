@@ -18,14 +18,8 @@ CORS(app)
 # Moneyhub Configuration - SET THESE IN ENVIRONMENT VARIABLES
 MONEYHUB_CLIENT_ID = os.environ.get('MONEYHUB_CLIENT_ID', 'your-client-id')
 MONEYHUB_REDIRECT_URI = os.environ.get('MONEYHUB_REDIRECT_URI', 'https://your-backend.koyeb.app/callback')
-
-# for production: 
-# MONEYHUB_IDENTITY_SERVER = os.environ.get('MONEYHUB_IDENTITY_SERVER', 'https://identity.moneyhub.co.uk')
-# MONEYHUB_API_SERVER = os.environ.get('MONEYHUB_API_SERVER', 'https://api.moneyhub.co.uk')
-
-# for sandbox:
-MONEYHUB_IDENTITY_SERVER = os.environ.get('MONEYHUB_IDENTITY_SERVER', 'https://identity-sandbox.moneyhub.co.uk')
-MONEYHUB_API_SERVER = os.environ.get('MONEYHUB_API_SERVER', 'https://api-sandbox.moneyhub.co.uk')
+MONEYHUB_IDENTITY_SERVER = os.environ.get('MONEYHUB_IDENTITY_SERVER', 'https://identity.moneyhub.co.uk')
+MONEYHUB_API_SERVER = os.environ.get('MONEYHUB_API_SERVER', 'https://api.moneyhub.co.uk')
 
 # Load your private key (store this securely - use environment variable or secret management)
 # Generate keys: https://mkjwk.org/ or use ssh-keygen
@@ -109,17 +103,22 @@ def start_auth():
         }
         
         # Build authorization URL
+        from urllib.parse import urlencode
+        
+        # Get bank_id from request (optional, defaults to 'test' for test banks)
+        bank_id = data.get('bank_id', 'test')
+        
         auth_params = {
             "client_id": MONEYHUB_CLIENT_ID,
             "redirect_uri": MONEYHUB_REDIRECT_URI,
             "response_type": "code",
-            "scope": "openid accounts:read transactions:read:all",
+            "scope": f"openid id:{bank_id}",
             "state": state,
             "nonce": nonce
         }
         
         auth_url = f"{MONEYHUB_IDENTITY_SERVER}/oidc/auth"
-        query_string = '&'.join([f"{k}={v}" for k, v in auth_params.items()])
+        query_string = urlencode(auth_params)
         full_auth_url = f"{auth_url}?{query_string}"
         
         return jsonify({
