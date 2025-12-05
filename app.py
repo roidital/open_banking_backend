@@ -32,6 +32,25 @@ PRIVATE_KEY_PEM = os.environ.get('MONEYHUB_PRIVATE_KEY', '''-----BEGIN PRIVATE K
 YOUR_PRIVATE_KEY_HERE
 -----END PRIVATE KEY-----''')
 
+# Normalize the private key format (handle both single-line and multi-line)
+def normalize_private_key(key_str):
+    """Normalize private key to proper PEM format"""
+    # Remove any extra whitespace
+    key_str = key_str.strip()
+    
+    # If it's single-line with \n, replace \n with actual newlines
+    if '\\n' in key_str:
+        key_str = key_str.replace('\\n', '\n')
+    
+    # Ensure proper PEM format
+    if not key_str.startswith('-----BEGIN'):
+        # Key might be just the base64 content
+        key_str = f"-----BEGIN PRIVATE KEY-----\n{key_str}\n-----END PRIVATE KEY-----"
+    
+    return key_str
+
+PRIVATE_KEY_PEM = normalize_private_key(PRIVATE_KEY_PEM)
+
 def generate_jti():
     """Generate unique JWT ID"""
     return ''.join(random.choice(string.ascii_lowercase) for i in range(32))
@@ -51,11 +70,16 @@ def generate_jwt(client_id, audience):
     }
     
     # Load private key
-    private_key = serialization.load_pem_private_key(
-        PRIVATE_KEY_PEM.encode(),
-        password=None,
-        backend=default_backend()
-    )
+    try:
+        private_key = serialization.load_pem_private_key(
+            PRIVATE_KEY_PEM.encode(),
+            password=None,
+            backend=default_backend()
+        )
+    except Exception as e:
+        print(f"Error loading private key: {str(e)}")
+        print(f"Key format (first 100 chars): {PRIVATE_KEY_PEM[:100]}")
+        raise Exception(f"Failed to load private key: {str(e)}")
     
     return jwt.encode(payload, private_key, algorithm="RS256")
 
