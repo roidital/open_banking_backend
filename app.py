@@ -15,6 +15,10 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-change-in-production')
 CORS(app)
 
+# Temporary in-memory storage for POC (use Redis/database in production)
+auth_states = {}  # {state: {user_id, nonce, timestamp}}
+user_tokens = {}  # {user_id: {access_token, refresh_token, ...}}
+
 # Moneyhub Configuration - SET THESE IN ENVIRONMENT VARIABLES
 MONEYHUB_CLIENT_ID = os.environ.get('MONEYHUB_CLIENT_ID', 'your-client-id')
 MONEYHUB_REDIRECT_URI = os.environ.get('MONEYHUB_REDIRECT_URI', 'https://your-backend.koyeb.app/callback')
@@ -95,8 +99,8 @@ def start_auth():
         state = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
         nonce = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
         
-        # Store in session (in production, use Redis or database)
-        session[f'state_{state}'] = {
+        # Store in memory (in production, use Redis or database)
+        auth_states[state] = {
             'user_id': user_id,
             'nonce': nonce,
             'timestamp': time.time()
@@ -142,9 +146,9 @@ def callback():
             return "Missing authorization code or state", 400
         
         # Verify state
-        session_data = session.get(f'state_{state}')
+        session_data = auth_states.get(state)
         if not session_data:
-            return "Invalid state parameter", 400
+            return f"Invalid state parameter. State: {state}, Available states: {list(auth_states.keys())}", 400
         
         user_id = session_data['user_id']
         nonce = session_data['nonce']
@@ -168,8 +172,7 @@ def callback():
         tokens = response.json()
         
         # Store tokens (in production, use secure database)
-        # For now, just store in session
-        session[f'tokens_{user_id}'] = {
+        user_tokens[user_id] = {
             'access_token': tokens.get('access_token'),
             'refresh_token': tokens.get('refresh_token'),
             'id_token': tokens.get('id_token'),
@@ -177,7 +180,7 @@ def callback():
         }
         
         # Clean up state
-        session.pop(f'state_{state}', None)
+        auth_states.pop(state, None)
         
         # Redirect to success page or deep link back to app
         return """
@@ -207,8 +210,8 @@ def get_accounts():
         if not user_id:
             return jsonify({"error": "user_id is required"}), 400
         
-        # Get tokens from session (in production, from database)
-        tokens = session.get(f'tokens_{user_id}')
+        # Get tokens from memory (in production, from database)
+        tokens = user_tokens.get(user_id)
         if not tokens:
             return jsonify({"error": "User not authenticated"}), 401
         
@@ -244,8 +247,8 @@ def get_transactions():
         if not user_id:
             return jsonify({"error": "user_id is required"}), 400
         
-        # Get tokens from session (in production, from database)
-        tokens = session.get(f'tokens_{user_id}')
+        # Get tokens from memory (in production, from database)
+        tokens = user_tokens.get(user_id)
         if not tokens:
             return jsonify({"error": "User not authenticated"}), 401
         
@@ -295,8 +298,8 @@ def get_recent_transactions():
         end_date = datetime.now()
         start_date = end_date - timedelta(days=7)
         
-        # Get tokens from session (in production, from database)
-        tokens = session.get(f'tokens_{user_id}')
+        # Get tokens from memory (in production, from database)
+        tokens = user_tokens.get(user_id)
         if not tokens:
             return jsonify({"error": "User not authenticated"}), 401
         
@@ -340,7 +343,7 @@ def auth_status():
     if not user_id:
         return jsonify({"error": "user_id is required"}), 400
     
-    tokens = session.get(f'tokens_{user_id}')
+    tokens = user_tokens.get(user_id)
     
     if not tokens:
         return jsonify({"authenticated": False})
