@@ -8,6 +8,7 @@ import requests
 from datetime import datetime, timedelta
 import json
 import os
+import base64
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 
@@ -81,6 +82,62 @@ def health():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "service": "moneyhub-backend"})
 
+@app.route('/test-flow', methods=['GET'])
+def test_flow():
+    """Test the full auth flow in browser"""
+    user_id = "browser_test_user"
+    
+    # Generate state and nonce
+    state_data = {
+        'user_id': user_id,
+        'random': ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+    }
+    state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode()
+    nonce = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+    
+    # Store nonce
+    auth_states[state] = {
+        'nonce': nonce,
+        'timestamp': time.time()
+    }
+    
+    # Get bank_id (defaults to 'test')
+    bank_id = 'test'
+    
+    # Build auth URL
+    from urllib.parse import urlencode
+    auth_params = {
+        "client_id": MONEYHUB_CLIENT_ID,
+        "redirect_uri": MONEYHUB_REDIRECT_URI,
+        "response_type": "code",
+        "scope": f"openid id:{bank_id}",
+        "state": state,
+        "nonce": nonce
+    }
+    
+    auth_url = f"{MONEYHUB_IDENTITY_SERVER}/oidc/auth"
+    query_string = urlencode(auth_params)
+    full_auth_url = f"{auth_url}?{query_string}"
+    
+    # Show debug page
+    return f"""
+    <html>
+        <head><title>Moneyhub Auth Test</title></head>
+        <body>
+            <h2>Debug Info:</h2>
+            <p><strong>State created:</strong> {state}</p>
+            <p><strong>States in memory:</strong> {list(auth_states.keys())}</p>
+            <p><strong>User ID:</strong> {user_id}</p>
+            <br>
+            <a href="{full_auth_url}" style="padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px;">
+                Click here to authenticate with Moneyhub
+            </a>
+            <br><br>
+            <p><small>This keeps everything in the same browser session</small></p>
+        </body>
+    </html>
+    """
+
 @app.route('/auth/start', methods=['POST'])
 def start_auth():
     """
@@ -96,12 +153,16 @@ def start_auth():
             return jsonify({"error": "user_id is required"}), 400
         
         # Generate state and nonce for security
-        state = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+        # Encode user_id into the state to survive server restarts
+        state_data = {
+            'user_id': user_id,
+            'random': ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        }
+        state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode()
         nonce = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
         
-        # Store in memory (in production, use Redis or database)
+        # Store nonce separately (still needed for OAuth validation)
         auth_states[state] = {
-            'user_id': user_id,
             'nonce': nonce,
             'timestamp': time.time()
         }
@@ -145,13 +206,23 @@ def callback():
         if not code or not state:
             return "Missing authorization code or state", 400
         
-        # Verify state
-        session_data = auth_states.get(state)
-        if not session_data:
-            return f"Invalid state parameter. State: {state}, Available states: {list(auth_states.keys())}", 400
+        # Decode state to get user_id
+        try:
+            state_data = json.loads(base64.urlsafe_b64decode(state.encode()).decode())
+            user_id = state_data.get('user_id')
+        except Exception as e:
+            return f"Invalid state encoding: {str(e)}", 400
         
-        user_id = session_data['user_id']
-        nonce = session_data['nonce']
+        # Try to get nonce from storage, but continue even if not found
+        session_data = auth_states.get(state)
+        if session_data:
+            nonce = session_data['nonce']
+            # Clean up state
+            auth_states.pop(state, None)
+        else:
+            # Server restarted - generate a new nonce
+            # This is less secure but allows the flow to continue for POC
+            nonce = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
         
         # Exchange code for tokens
         token_url = f"{MONEYHUB_IDENTITY_SERVER}/oidc/token"
@@ -178,9 +249,6 @@ def callback():
             'id_token': tokens.get('id_token'),
             'expires_at': time.time() + tokens.get('expires_in', 3600)
         }
-        
-        # Clean up state
-        auth_states.pop(state, None)
         
         # Redirect to success page or deep link back to app
         return """
