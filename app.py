@@ -125,16 +125,21 @@ def test_flow():
         'timestamp': time.time()
     }
     
-    # Get bank_id (defaults to 'test')
-    bank_id = 'test'
+    # Get bank_id (defaults to showing all banks)
+    bank_id = None
     
     # Build auth URL
     from urllib.parse import urlencode
+    
+    if bank_id:
+        scope = f"openid id:{bank_id}"
+    else:
+        scope = "openid"
     auth_params = {
         "client_id": MONEYHUB_CLIENT_ID,
         "redirect_uri": MONEYHUB_REDIRECT_URI,
         "response_type": "code",
-        "scope": f"openid id:{bank_id}",
+        "scope": scope,
         "state": state,
         "nonce": nonce
     }
@@ -194,14 +199,24 @@ def start_auth():
         # Build authorization URL
         from urllib.parse import urlencode
         
-        # Get bank_id from request (optional, defaults to 'test' for test banks)
-        bank_id = data.get('bank_id', 'test')
+        # Get bank_id from request
+        # For production: use specific bank IDs (you'll need to get these from Moneyhub)
+        # For sandbox: use 'test'
+        # If not provided, show all available banks
+        bank_id = data.get('bank_id', None)
+        
+        # Build scope based on bank_id
+        if bank_id:
+            scope = f"openid id:{bank_id}"
+        else:
+            # No bank_id = show all available banks to user
+            scope = "openid"
         
         auth_params = {
             "client_id": MONEYHUB_CLIENT_ID,
             "redirect_uri": MONEYHUB_REDIRECT_URI,
             "response_type": "code",
-            "scope": f"openid id:{bank_id}",
+            "scope": scope,
             "state": state,
             "nonce": nonce
         }
@@ -222,13 +237,41 @@ def start_auth():
 def callback():
     """
     OAuth callback endpoint - Moneyhub redirects here after user authentication
+    For PRODUCTION: params come in hash fragment, so we need to handle that with JS
+    For SANDBOX: params come in query string
     """
     try:
+        # Check if we have query params (sandbox mode or after JS redirect)
         code = request.args.get('code')
         state = request.args.get('state')
+        id_token = request.args.get('id_token')  # Production sends this too
         
+        # If no query params, return HTML to extract from hash fragment (production mode)
         if not code or not state:
-            return "Missing authorization code or state", 400
+            return """
+            <!DOCTYPE html>
+            <html>
+              <head><title>Completing authentication...</title></head>
+              <body>
+                <h2>Completing authentication...</h2>
+                <p>Please wait...</p>
+                <script>
+                  function extractHash() {
+                    // Check if we have hash fragment
+                    if (window.location.hash) {
+                      // Convert hash to query params and reload
+                      var newUrl = window.location.href.split('#')[0] + '?' + window.location.hash.substring(1);
+                      window.location = newUrl;
+                    } else if (!window.location.search) {
+                      // No hash and no query params = something went wrong
+                      document.body.innerHTML = '<h2>Error</h2><p>Missing authentication parameters</p>';
+                    }
+                  }
+                  extractHash();
+                </script>
+              </body>
+            </html>
+            """
         
         # Decode state to get user_id
         try:
@@ -258,9 +301,17 @@ def callback():
             "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
             "client_assertion": client_assertion,
             "code": code,
-            "redirect_uri": MONEYHUB_REDIRECT_URI,
-            "nonce": nonce
+            "redirect_uri": MONEYHUB_REDIRECT_URI
         }
+        
+        # Add id_token if present (required for production)
+        if id_token:
+            token_data["id_token"] = id_token
+        
+        # Add nonce if we have it
+        if session_data:
+            nonce = session_data['nonce']
+            token_data["nonce"] = nonce
         
         response = requests.post(token_url, data=token_data)
         response.raise_for_status()
