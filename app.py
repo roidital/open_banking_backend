@@ -101,6 +101,48 @@ def get_client_credentials_token(scope="accounts:read transactions:read:all"):
     response.raise_for_status()
     return response.json()
 
+@app.route('/api/connections', methods=['GET'])
+def get_connections():
+    """
+    Get list of available bank connections
+    This returns all banks/financial institutions that can be connected
+    """
+    try:
+        # Get client credentials token
+        token_response = get_client_credentials_token(scope="connections:read")
+        access_token = token_response.get('access_token')
+        
+        # Get connections list from Moneyhub
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        response = requests.get(
+            f"{MONEYHUB_API_SERVER}/v2.0/connections",
+            headers=headers
+        )
+        response.raise_for_status()
+        
+        connections = response.json()
+        
+        # Filter to show only relevant info
+        banks = []
+        for conn in connections.get('data', []):
+            banks.append({
+                "id": conn.get('id'),
+                "name": conn.get('name'),
+                "country": conn.get('country'),
+                "available": conn.get('available')
+            })
+        
+        return jsonify({
+            "total": len(banks),
+            "banks": banks
+        })
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
