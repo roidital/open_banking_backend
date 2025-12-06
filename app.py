@@ -138,7 +138,7 @@ def test_flow():
     auth_params = {
         "client_id": MONEYHUB_CLIENT_ID,
         "redirect_uri": MONEYHUB_REDIRECT_URI,
-        "response_type": "code",
+        "response_type": "code id_token",  # Changed for production
         "scope": scope,
         "state": state,
         "nonce": nonce
@@ -215,7 +215,7 @@ def start_auth():
         auth_params = {
             "client_id": MONEYHUB_CLIENT_ID,
             "redirect_uri": MONEYHUB_REDIRECT_URI,
-            "response_type": "code",
+            "response_type": "code id_token",  # Changed for production
             "scope": scope,
             "state": state,
             "nonce": nonce
