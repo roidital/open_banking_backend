@@ -540,6 +540,46 @@ def auth_status():
         "expires_at": tokens['expires_at']
     })
 
+
+
+
+
+########################################################
+@app.route('/api/keys', methods=['GET'])
+def get_api_keys():
+    """
+    Endpoint to securely serve API keys to the mobile app
+    
+    Optional: Add authentication to verify requests are from your app
+    """
+    
+    # Optional: Check for authentication token
+    auth_token = request.headers.get('Authorization')
+    expected_token = os.environ.get('API_SECRET_TOKEN')
+    
+    # Uncomment this block if you want to require authentication:
+    # if expected_token and auth_token != f"Bearer {expected_token}":
+    #     return jsonify({"error": "Unauthorized"}), 401
+    
+    # Retrieve API keys from environment variables
+    openai_key = os.environ.get('OPENAI_API_KEY')
+    google_translate_key = os.environ.get('GOOGLE_TRANSLATE_API_KEY')
+    gemini_key = os.environ.get('GEMINI_API_KEY')
+    
+    # Check if all keys are available
+    if not openai_key or not google_translate_key or not gemini_key:
+        return jsonify({
+            "error": "API keys not configured on server"
+        }), 500
+    
+    # Return the keys
+    return jsonify({
+        "openai_key": openai_key,
+        "google_translate_key": google_translate_key,
+        "gemini_key": gemini_key
+    }), 200
+
+
 if __name__ == '__main__':
     # For development only - use a proper WSGI server in production
     app.run(host='0.0.0.0', port=5000, debug=False)
