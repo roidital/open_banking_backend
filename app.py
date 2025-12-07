@@ -562,23 +562,20 @@ def get_api_keys():
     #     return jsonify({"error": "Unauthorized"}), 401
     
     # Retrieve API keys from environment variables
-    openai_key = os.environ.get('OPENAI_API_KEY')
     google_translate_key = os.environ.get('GOOGLE_TRANSLATE_API_KEY')
     gemini_key = os.environ.get('GEMINI_API_KEY')
     
     # Check if all keys are available
-    if not openai_key or not google_translate_key or not gemini_key:
+    if not google_translate_key or not gemini_key:
         return jsonify({
             "error": "API keys not configured on server"
         }), 500
     
     # Return the keys
     return jsonify({
-        "openai_key": openai_key,
         "google_translate_key": google_translate_key,
         "gemini_key": gemini_key
     }), 200
-
 
 if __name__ == '__main__':
     # For development only - use a proper WSGI server in production
