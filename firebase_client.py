@@ -21,7 +21,11 @@ def init_firebase():
         return
     
     try:
-        cred = credentials.Certificate(Config.FIREBASE_CREDENTIALS_PATH)
+        creds_json = os.environ.get('FIREBASE_CREDENTIALS_JSON')
+        if creds_json:
+            creds_dict = json.loads(creds_json)
+            cred = credentials.Certificate(creds_dict)
+        
         firebase_admin.initialize_app(cred, {
             'databaseURL': Config.FIREBASE_DATABASE_URL
         })
