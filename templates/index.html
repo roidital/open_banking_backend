@@ -71,6 +71,7 @@
             padding: 24px;
             backdrop-filter: blur(10px);
             box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+            margin-bottom: 16px;
         }
 
         .card-title {
@@ -302,10 +303,67 @@
             background: transparent;
             border: 1px solid var(--primary);
             color: var(--primary-light);
+            margin-bottom: 12px;
         }
 
         .btn-outline:hover {
             background: rgba(37, 99, 235, 0.1);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--card-border);
+            color: var(--text-secondary);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Connected accounts section */
+        .connected-accounts {
+            margin-bottom: 20px;
+        }
+
+        .connected-accounts h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--success);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .connected-account {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+
+        .connected-account-name {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .connected-account-status {
+            font-size: 12px;
+            color: var(--success);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .add-more-text {
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
         }
     </style>
 </head>
@@ -316,8 +374,31 @@
             <p>חיבור חשבון בנק / כרטיס אשראי</p>
         </div>
 
+        {% if connected_accounts %}
+        <div class="card connected-accounts">
+            <h3>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                חשבונות מחוברים
+            </h3>
+            {% for account in connected_accounts %}
+            <div class="connected-account">
+                <span class="connected-account-name">{{ account.name }}</span>
+                <span class="connected-account-status">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="12" r="10"/>
+                    </svg>
+                    מחובר
+                </span>
+            </div>
+            {% endfor %}
+            <p class="add-more-text">ניתן להוסיף חשבונות נוספים למטה</p>
+        </div>
+        {% endif %}
+
         <div class="card" id="form-card">
-            <h2 class="card-title">הזן את פרטי ההתחברות</h2>
+            <h2 class="card-title">{% if connected_accounts %}הוסף חשבון נוסף{% else %}הזן את פרטי ההתחברות{% endif %}</h2>
 
             <div id="status-message" class="status-message"></div>
 
@@ -407,8 +488,11 @@
                 </svg>
             </div>
             <h2>החיבור הצליח!</h2>
-            <p>ההוצאות שלך נשלפו בהצלחה ונשלחו לאפליקציה. מעתה תקבל/י עדכונים יומיים.</p>
-            <button class="btn btn-outline" onclick="window.close(); location.href='budgee://scraper-complete';">
+            <p id="success-message">ההוצאות שלך נשלפו בהצלחה ונשלחו לאפליקציה. מעתה תקבל/י עדכונים יומיים.</p>
+            <button class="btn btn-outline" onclick="addAnotherAccount()">
+                הוסף חשבון נוסף
+            </button>
+            <button class="btn btn-secondary" onclick="window.close(); location.href='budgee://scraper-complete';">
                 חזרה לאפליקציה
             </button>
         </div>
@@ -417,6 +501,8 @@
     <script>
         // Credential fields configuration (from server)
         const credentialFields = {{ credential_fields | tojson }};
+        // Connected accounts (from server)
+        const connectedAccounts = {{ connected_accounts | tojson if connected_accounts else '[]' }};
 
         const companySelect = document.getElementById('company');
         const form = document.getElementById('credentials-form');
@@ -513,6 +599,11 @@
                 const result = await response.json();
 
                 if (response.ok && result.success) {
+                    // Update success message with transaction count if available
+                    if (result.newTransactions) {
+                        document.getElementById('success-message').textContent = 
+                            `נמצאו ${result.newTransactions} הוצאות חדשות ונשלחו לאפליקציה. מעתה תקבל/י עדכונים יומיים.`;
+                    }
                     // Show success screen
                     formCard.style.display = 'none';
                     successCard.style.display = 'block';
@@ -527,7 +618,11 @@
                 submitBtn.disabled = false;
             }
         });
+
+        // Add another account - reload the page to show updated connected accounts
+        function addAnotherAccount() {
+            location.reload();
+        }
     </script>
 </body>
 </html>
-

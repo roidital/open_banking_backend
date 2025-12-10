@@ -1,12 +1,14 @@
 # Firebase Realtime Database Structure
 
 This document describes the Firebase Realtime Database structure used by the Scraper Entry Point service.
+**Updated to support multiple bank/card accounts per user.**
 
 ## Database Nodes
 
-### 1. `/user_credentials/{userId}`
+### 1. `/user_credentials/{userId}/{companyId}`
 
-**Purpose**: Store encrypted bank credentials for each user.
+**Purpose**: Store encrypted bank credentials for each user's account.
+Supports multiple accounts per user by storing under `{userId}/{companyId}`.
 
 **Access**: 
 - Read/Write: Only by Admin SDK (server-side)
@@ -15,7 +17,6 @@ This document describes the Firebase Realtime Database structure used by the Scr
 **Structure**:
 ```json
 {
-  "company_id": "hapoalim",
   "credentials": {
     "encrypted_data": "base64-encoded-ciphertext",
     "nonce": "base64-encoded-nonce"
@@ -26,9 +27,30 @@ This document describes the Firebase Realtime Database structure used by the Scr
 }
 ```
 
+**Example** (user with two accounts):
+```json
+{
+  "user_credentials": {
+    "user123": {
+      "hapoalim": {
+        "credentials": { ... },
+        "scraping_enabled": true,
+        "last_scraped": "2025-12-09T06:00:00Z"
+      },
+      "isracard": {
+        "credentials": { ... },
+        "scraping_enabled": true,
+        "last_scraped": "2025-12-09T06:00:00Z"
+      }
+    }
+  }
+}
+```
+
 ### 2. `/scraped_expenses/{userId}`
 
-**Purpose**: Store scraped expense data for the app to read.
+**Purpose**: Store scraped expense transactions for the app to read.
+Transactions are stored in a flat dictionary keyed by unique transaction ID to enable deduplication.
 
 **Access**:
 - Read: User can read their own data
@@ -38,29 +60,36 @@ This document describes the Firebase Realtime Database structure used by the Scr
 ```json
 {
   "last_updated": "2025-12-09T06:00:00Z",
-  "data": {
-    "success": true,
-    "accounts": [
-      {
-        "accountNumber": "****1234",
-        "txns": [
-          {
-            "date": "2025-12-08",
-            "description": "Supermarket ABC",
-            "originalAmount": -150.00,
-            "originalCurrency": "ILS",
-            "chargedAmount": -150.00,
-            "type": "normal",
-            "status": "completed",
-            "identifier": "txn-12345",
-            "category": "groceries"
-          }
-        ]
-      }
-    ]
+  "connected_accounts": ["hapoalim", "isracard"],
+  "transactions": {
+    "abc123hash": {
+      "date": "2025-12-08",
+      "description": "Supermarket ABC",
+      "originalAmount": -150.00,
+      "chargedAmount": -150.00,
+      "originalCurrency": "ILS",
+      "type": "normal",
+      "status": "completed",
+      "source_company": "hapoalim",
+      "source_account": "****1234",
+      "category": "groceries"
+    },
+    "def456hash": {
+      "date": "2025-12-07",
+      "description": "Gas Station",
+      "chargedAmount": -200.00,
+      "source_company": "isracard",
+      "source_account": "****5678"
+    }
   }
 }
 ```
+
+**Key features**:
+- Transactions from ALL connected accounts are stored together
+- Each transaction has `source_company` and `source_account` to identify origin
+- Transaction IDs are hashes of (date + description + amount) for deduplication
+- New scrapes merge with existing transactions, never overwrite
 
 ### 3. `/scraper_status/{userId}`
 
@@ -76,7 +105,20 @@ This document describes the Firebase Realtime Database structure used by the Scr
   "status": "success",
   "last_run": "2025-12-09T06:00:00Z",
   "error_message": null,
-  "has_credentials": true
+  "has_credentials": true,
+  "connected_accounts": ["hapoalim", "isracard"],
+  "accounts": {
+    "hapoalim": {
+      "status": "success",
+      "last_run": "2025-12-09T06:00:00Z",
+      "error_message": null
+    },
+    "isracard": {
+      "status": "error",
+      "last_run": "2025-12-09T06:00:00Z",
+      "error_message": "Invalid credentials"
+    }
+  }
 }
 ```
 
@@ -85,6 +127,8 @@ This document describes the Firebase Realtime Database structure used by the Scr
 - `success`: Last scrape completed successfully
 - `error`: Last scrape failed (see error_message)
 - `deleted`: User deleted their credentials
+
+**Note**: Overall status reflects the worst status among all accounts (error > pending > success)
 
 ### 4. `/shared_preferences/{userId}` (Existing)
 
@@ -114,3 +158,7 @@ Or manually copy the rules from `firebase-database-rules.json` to the Firebase C
 2. Replace existing rules with the content of `firebase-database-rules.json`
 3. Click "Publish"
 
+## Migration Notes
+
+If you have existing data in the old format (`/user_credentials/{userId}` with single credentials object),
+the app includes backwards compatibility handling. However, new accounts will use the new structure.

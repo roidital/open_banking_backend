@@ -3,10 +3,12 @@ Scraper Entry Point Service - Flask Application
 
 This service provides a web interface for users to enter their bank credentials,
 stores them securely, and orchestrates scraping jobs with the existing bank-scraper-service.
+Supports multiple bank/card accounts per user.
 """
 import os
 import logging
 import requests
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, redirect
 from flask_cors import CORS
 from config import Config
@@ -15,7 +17,8 @@ from firebase_client import (
     verify_firebase_token,
     save_user_credentials,
     get_user_credentials,
-    get_all_enabled_users,
+    get_user_connected_accounts,
+    get_all_enabled_accounts,
     update_last_scraped,
     delete_user_credentials,
     save_scraped_expenses,
@@ -83,16 +86,33 @@ def index():
         return render_template('error.html', 
                              message='Missing authentication token. Please open this page from the Budgee app.')
     
+    # Try to get connected accounts for this user
+    connected_accounts = []
+    try:
+        decoded_token = verify_firebase_token(token)
+        user_id = decoded_token['uid']
+        connected_accounts = get_user_connected_accounts(user_id)
+    except:
+        pass  # Token might be invalid for display purposes, that's ok
+    
+    # Create display-friendly connected accounts list
+    connected_display = [
+        {'id': acc, 'name': COMPANY_DISPLAY_NAMES.get(acc, acc)}
+        for acc in connected_accounts
+    ]
+    
     return render_template('index.html', 
                          token=token,
                          companies=COMPANY_DISPLAY_NAMES,
-                         credential_fields=CREDENTIAL_FIELDS)
+                         credential_fields=CREDENTIAL_FIELDS,
+                         connected_accounts=connected_display)
 
 
 @app.route('/submit-credentials', methods=['POST'])
 def submit_credentials():
     """
     Receive and store encrypted credentials, then trigger initial scrape.
+    Supports multiple accounts per user.
     
     Expected JSON body:
     {
@@ -146,11 +166,11 @@ def submit_credentials():
         # Encrypt credentials
         encrypted = encrypt_credentials(credentials)
         
-        # Save to Firebase
+        # Save to Firebase (under user_id/company_id)
         save_user_credentials(user_id, company_id, encrypted)
         
         # Update status to pending
-        update_scraper_status(user_id, 'pending')
+        update_scraper_status(user_id, 'pending', company_id=company_id)
         
         # Trigger immediate scrape
         scrape_result = trigger_scrape(user_id, company_id, credentials, start_date)
@@ -158,7 +178,8 @@ def submit_credentials():
         if scrape_result.get('success'):
             return jsonify({
                 'success': True,
-                'message': 'Credentials saved and initial scrape completed successfully'
+                'message': 'Credentials saved and initial scrape completed successfully',
+                'newTransactions': scrape_result.get('new_count', 0)
             })
         else:
             # Credentials saved but scrape failed
@@ -177,6 +198,7 @@ def submit_credentials():
 def scrape_job():
     """
     Internal endpoint called by scheduler to run daily scrape jobs.
+    Iterates over all user accounts with scraping enabled.
     Requires scheduler secret for authentication.
     """
     try:
@@ -187,8 +209,8 @@ def scrape_job():
         if auth_header != expected:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        # Get all users with scraping enabled
-        enabled_users = get_all_enabled_users()
+        # Get all accounts with scraping enabled
+        enabled_accounts = get_all_enabled_accounts()
         
         results = {
             'processed': 0,
@@ -197,26 +219,24 @@ def scrape_job():
             'errors': []
         }
         
-        for user_id, user_data in enabled_users:
+        for user_id, company_id, account_data in enabled_accounts:
             results['processed'] += 1
             
             try:
                 # Decrypt credentials
-                encrypted = user_data.get('credentials')
-                company_id = user_data.get('company_id')
+                encrypted = account_data.get('credentials')
                 
-                if not encrypted or not company_id:
+                if not encrypted:
                     results['failed'] += 1
-                    results['errors'].append(f'{user_id}: Missing credentials or company_id')
+                    results['errors'].append(f'{user_id}/{company_id}: Missing credentials')
                     continue
                 
                 credentials = decrypt_credentials(encrypted)
                 
                 # Update status to pending
-                update_scraper_status(user_id, 'pending')
+                update_scraper_status(user_id, 'pending', company_id=company_id)
                 
                 # Trigger scrape (use last 30 days as default)
-                from datetime import datetime, timedelta
                 start_date = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
                 
                 scrape_result = trigger_scrape(user_id, company_id, credentials, start_date)
@@ -225,12 +245,12 @@ def scrape_job():
                     results['success'] += 1
                 else:
                     results['failed'] += 1
-                    results['errors'].append(f'{user_id}: {scrape_result.get("error")}')
+                    results['errors'].append(f'{user_id}/{company_id}: {scrape_result.get("error")}')
             
             except Exception as e:
                 results['failed'] += 1
-                results['errors'].append(f'{user_id}: {str(e)}')
-                update_scraper_status(user_id, 'error', str(e))
+                results['errors'].append(f'{user_id}/{company_id}: {str(e)}')
+                update_scraper_status(user_id, 'error', str(e), company_id=company_id)
         
         logger.info(f"Scrape job completed: {results['success']}/{results['processed']} successful")
         return jsonify(results)
@@ -242,7 +262,7 @@ def scrape_job():
 
 @app.route('/status/<user_id>', methods=['GET'])
 def get_status(user_id):
-    """Get scraping status for a user."""
+    """Get scraping status for a user, including all connected accounts."""
     try:
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
         
@@ -257,14 +277,32 @@ def get_status(user_id):
         except ValueError as e:
             return jsonify({'error': str(e)}), 401
         
-        # Get user credentials to check if they exist
-        user_creds = get_user_credentials(user_id)
+        # Get all user accounts
+        user_accounts = get_user_credentials(user_id)
+        
+        if not user_accounts:
+            return jsonify({
+                'hasCredentials': False,
+                'connectedAccounts': [],
+                'scrapingEnabled': False
+            })
+        
+        # Build list of connected accounts with their status
+        connected_accounts = []
+        for company_id, account_data in user_accounts.items():
+            if isinstance(account_data, dict):
+                connected_accounts.append({
+                    'companyId': company_id,
+                    'companyName': COMPANY_DISPLAY_NAMES.get(company_id, company_id),
+                    'scrapingEnabled': account_data.get('scraping_enabled', False),
+                    'lastScraped': account_data.get('last_scraped'),
+                    'createdAt': account_data.get('created_at')
+                })
         
         return jsonify({
-            'hasCredentials': user_creds is not None,
-            'companyId': user_creds.get('company_id') if user_creds else None,
-            'scrapingEnabled': user_creds.get('scraping_enabled', False) if user_creds else False,
-            'lastScraped': user_creds.get('last_scraped') if user_creds else None
+            'hasCredentials': len(connected_accounts) > 0,
+            'connectedAccounts': connected_accounts,
+            'scrapingEnabled': any(acc['scrapingEnabled'] for acc in connected_accounts)
         })
     
     except Exception as e:
@@ -274,9 +312,16 @@ def get_status(user_id):
 
 @app.route('/delete-credentials', methods=['DELETE'])
 def delete_credentials():
-    """Allow users to delete their stored credentials."""
+    """
+    Allow users to delete their stored credentials.
+    Can delete a specific account or all accounts.
+    
+    Query params:
+        company_id: Optional - if provided, deletes only that company's credentials
+    """
     try:
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        company_id = request.args.get('company_id')
         
         if not token:
             return jsonify({'error': 'Missing authentication token'}), 401
@@ -288,21 +333,34 @@ def delete_credentials():
         except ValueError as e:
             return jsonify({'error': str(e)}), 401
         
-        # Delete credentials
-        delete_user_credentials(user_id)
+        # Delete credentials (specific company or all)
+        delete_user_credentials(user_id, company_id)
         
         # Update status
         from firebase_client import db, init_firebase
         init_firebase()
-        status_ref = db.reference(f'scraper_status/{user_id}')
-        status_ref.set({
-            'status': 'deleted',
-            'has_credentials': False,
-            'last_run': None,
-            'error_message': None
-        })
         
-        return jsonify({'success': True, 'message': 'Credentials deleted successfully'})
+        remaining_accounts = get_user_connected_accounts(user_id)
+        
+        status_ref = db.reference(f'scraper_status/{user_id}')
+        if remaining_accounts:
+            # Still have some accounts, update status
+            status_ref.update({
+                'connected_accounts': remaining_accounts
+            })
+            message = f'Credentials for {company_id} deleted successfully'
+        else:
+            # No more accounts
+            status_ref.set({
+                'status': 'deleted',
+                'has_credentials': False,
+                'last_run': None,
+                'error_message': None,
+                'connected_accounts': []
+            })
+            message = 'All credentials deleted successfully'
+        
+        return jsonify({'success': True, 'message': message})
     
     except Exception as e:
         logger.error(f"Error in delete_credentials: {e}")
@@ -320,7 +378,7 @@ def trigger_scrape(user_id: str, company_id: str, credentials: dict, start_date:
         start_date: Start date for scraping (YYYY-MM-DD)
     
     Returns:
-        Dict with 'success' boolean and optional 'error' message
+        Dict with 'success' boolean, optional 'error' message, and 'new_count' for new transactions
     """
     try:
         # Prepare request to scraper service
@@ -341,31 +399,31 @@ def trigger_scrape(user_id: str, company_id: str, credentials: dict, start_date:
         
         if response.status_code != 200:
             error_msg = f"Scraper service returned {response.status_code}"
-            update_scraper_status(user_id, 'error', error_msg)
+            update_scraper_status(user_id, 'error', error_msg, company_id=company_id)
             return {'success': False, 'error': error_msg}
         
         result = response.json()
         
         if result.get('success'):
-            # Save scraped expenses to Firebase
-            save_scraped_expenses(user_id, result)
-            update_last_scraped(user_id)
-            update_scraper_status(user_id, 'success')
-            return {'success': True}
+            # Save scraped expenses to Firebase (merges with existing)
+            new_count = save_scraped_expenses(user_id, company_id, result)
+            update_last_scraped(user_id, company_id)
+            update_scraper_status(user_id, 'success', company_id=company_id)
+            return {'success': True, 'new_count': new_count}
         else:
             error_msg = result.get('errorMessage', 'Unknown scraping error')
-            update_scraper_status(user_id, 'error', error_msg)
+            update_scraper_status(user_id, 'error', error_msg, company_id=company_id)
             return {'success': False, 'error': error_msg}
     
     except requests.Timeout:
         error_msg = 'Scraping request timed out'
-        update_scraper_status(user_id, 'error', error_msg)
+        update_scraper_status(user_id, 'error', error_msg, company_id=company_id)
         return {'success': False, 'error': error_msg}
     
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Error triggering scrape for {user_id}: {error_msg}")
-        update_scraper_status(user_id, 'error', error_msg)
+        logger.error(f"Error triggering scrape for {user_id}/{company_id}: {error_msg}")
+        update_scraper_status(user_id, 'error', error_msg, company_id=company_id)
         return {'success': False, 'error': error_msg}
 
 
@@ -378,4 +436,3 @@ def health():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true')
-
