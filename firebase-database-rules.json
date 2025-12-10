@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "shared_preferences": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId"
+      }
+    },
+    "user_credentials": {
+      "$userId": {
+        ".read": false,
+        ".write": false
+      }
+    },
+    "scraped_expenses": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": false
+      }
+    },
+    "scraper_status": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": false
+      }
+    }
+  }
+}
+

@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budgee - Connect Bank Account</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #3b82f6;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --bg-gradient-start: #0f172a;
+            --bg-gradient-end: #1e293b;
+            --card-bg: rgba(30, 41, 59, 0.8);
+            --card-border: rgba(71, 85, 105, 0.5);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --input-border: rgba(71, 85, 105, 0.8);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Heebo', sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo h1 {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-light), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        select, input {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 16px;
+            font-family: inherit;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+        }
+
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: left 12px center;
+            background-size: 20px;
+            padding-left: 40px;
+        }
+
+        select option {
+            background: var(--bg-gradient-end);
+            color: var(--text-primary);
+        }
+
+        input[type="password"] {
+            letter-spacing: 2px;
+        }
+
+        input[type="date"] {
+            cursor: pointer;
+        }
+
+        .credential-field {
+            display: none;
+        }
+
+        .credential-field.visible {
+            display: block;
+        }
+
+        .consent-group {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin: 20px 0;
+            padding: 16px;
+            background: rgba(37, 99, 235, 0.1);
+            border-radius: 10px;
+            border: 1px solid rgba(37, 99, 235, 0.3);
+        }
+
+        .consent-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-top: 2px;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .consent-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .consent-text strong {
+            color: var(--text-primary);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            font-family: inherit;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-message {
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status-message.success {
+            display: block;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--success);
+        }
+
+        .status-message.error {
+            display: block;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--error);
+        }
+
+        .status-message.loading {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(37, 99, 235, 0.15);
+            border: 1px solid rgba(37, 99, 235, 0.3);
+            color: var(--primary-light);
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .security-note {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 10px;
+        }
+
+        .security-note h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--warning);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .security-note ul {
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding-right: 20px;
+            line-height: 1.6;
+        }
+
+        .success-screen {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(16, 185, 129, 0.15);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+        }
+
+        .success-icon svg {
+            width: 40px;
+            height: 40px;
+            color: var(--success);
+        }
+
+        .success-screen h2 {
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+
+        .success-screen p {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary-light);
+        }
+
+        .btn-outline:hover {
+            background: rgba(37, 99, 235, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>Budgee</h1>
+            <p>חיבור חשבון בנק / כרטיס אשראי</p>
+        </div>
+
+        <div class="card" id="form-card">
+            <h2 class="card-title">הזן את פרטי ההתחברות</h2>
+
+            <div id="status-message" class="status-message"></div>
+
+            <form id="credentials-form">
+                <input type="hidden" id="token" value="{{ token }}">
+
+                <div class="form-group">
+                    <label for="company">בחר בנק / כרטיס אשראי</label>
+                    <select id="company" required>
+                        <option value="">-- בחר --</option>
+                        {% for id, name in companies.items() %}
+                        <option value="{{ id }}">{{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Dynamic credential fields -->
+                <div id="credential-fields">
+                    <div class="form-group credential-field" data-field="username">
+                        <label for="username">שם משתמש</label>
+                        <input type="text" id="username" autocomplete="username">
+                    </div>
+
+                    <div class="form-group credential-field" data-field="userCode">
+                        <label for="userCode">קוד משתמש</label>
+                        <input type="text" id="userCode" autocomplete="username">
+                    </div>
+
+                    <div class="form-group credential-field" data-field="password">
+                        <label for="password">סיסמה</label>
+                        <input type="password" id="password" autocomplete="current-password">
+                    </div>
+
+                    <div class="form-group credential-field" data-field="id">
+                        <label for="id">תעודת זהות</label>
+                        <input type="text" id="id" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+
+                    <div class="form-group credential-field" data-field="card6Digits">
+                        <label for="card6Digits">6 ספרות אחרונות של הכרטיס</label>
+                        <input type="text" id="card6Digits" maxlength="6" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+
+                    <div class="form-group credential-field" data-field="num">
+                        <label for="num">קוד אישי / מספר זהוי</label>
+                        <input type="text" id="num" inputmode="numeric">
+                    </div>
+                </div>
+
+                <div class="form-group credential-field" data-field="startDate" id="start-date-group">
+                    <label for="startDate">תאריך התחלה לסריקה</label>
+                    <input type="date" id="startDate" required>
+                </div>
+
+                <div class="consent-group">
+                    <input type="checkbox" id="consent" required>
+                    <div class="consent-text">
+                        <strong>אני מאשר/ת</strong> שאני מסכים/ה לשמירת פרטי ההתחברות שלי באופן מאובטח ומוצפן לצורך קבלת עדכונים יומיים על ההוצאות שלי. אוכל למחוק את הפרטים בכל עת.
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="submit-btn" disabled>
+                    התחבר ושלוף הוצאות
+                </button>
+            </form>
+
+            <div class="security-note">
+                <h4>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    אבטחת המידע שלך
+                </h4>
+                <ul>
+                    <li>הפרטים מוצפנים בהצפנת AES-256</li>
+                    <li>התקשורת מאובטחת ב-HTTPS</li>
+                    <li>אנחנו לא שומרים את הסיסמה בטקסט גלוי</li>
+                    <li>תוכל/י למחוק את הפרטים בכל עת מההגדרות</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card success-screen" id="success-card" style="display: none;">
+            <div class="success-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+            </div>
+            <h2>החיבור הצליח!</h2>
+            <p>ההוצאות שלך נשלפו בהצלחה ונשלחו לאפליקציה. מעתה תקבל/י עדכונים יומיים.</p>
+            <button class="btn btn-outline" onclick="window.close(); location.href='budgee://scraper-complete';">
+                חזרה לאפליקציה
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Credential fields configuration (from server)
+        const credentialFields = {{ credential_fields | tojson }};
+
+        const companySelect = document.getElementById('company');
+        const form = document.getElementById('credentials-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const statusMessage = document.getElementById('status-message');
+        const formCard = document.getElementById('form-card');
+        const successCard = document.getElementById('success-card');
+        const consentCheckbox = document.getElementById('consent');
+        const startDateGroup = document.getElementById('start-date-group');
+
+        // Set default start date to 30 days ago
+        const defaultStartDate = new Date();
+        defaultStartDate.setDate(defaultStartDate.getDate() - 30);
+        document.getElementById('startDate').value = defaultStartDate.toISOString().split('T')[0];
+
+        // Update visible fields when company changes
+        companySelect.addEventListener('change', function() {
+            const company = this.value;
+            const fields = credentialFields[company] || [];
+
+            // Hide all fields first
+            document.querySelectorAll('.credential-field').forEach(el => {
+                el.classList.remove('visible');
+                const input = el.querySelector('input');
+                if (input) input.required = false;
+            });
+
+            // Show relevant fields
+            if (company) {
+                fields.forEach(field => {
+                    const fieldEl = document.querySelector(`[data-field="${field}"]`);
+                    if (fieldEl) {
+                        fieldEl.classList.add('visible');
+                        const input = fieldEl.querySelector('input');
+                        if (input) input.required = true;
+                    }
+                });
+
+                // Always show start date when company is selected
+                startDateGroup.classList.add('visible');
+                document.getElementById('startDate').required = true;
+            }
+
+            updateSubmitButton();
+        });
+
+        // Update submit button state
+        function updateSubmitButton() {
+            const company = companySelect.value;
+            const consent = consentCheckbox.checked;
+            submitBtn.disabled = !company || !consent;
+        }
+
+        consentCheckbox.addEventListener('change', updateSubmitButton);
+
+        // Handle form submission
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const company = companySelect.value;
+            const fields = credentialFields[company] || [];
+            const token = document.getElementById('token').value;
+            const startDate = document.getElementById('startDate').value;
+
+            // Gather credentials
+            const credentials = {};
+            fields.forEach(field => {
+                const input = document.getElementById(field);
+                if (input) {
+                    credentials[field] = input.value;
+                }
+            });
+
+            // Show loading
+            statusMessage.className = 'status-message loading';
+            statusMessage.innerHTML = '<div class="spinner"></div><span>מתחבר ושולף הוצאות... זה עשוי לקחת כדקה</span>';
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch('/submit-credentials', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        token: token,
+                        companyId: company,
+                        credentials: credentials,
+                        startDate: startDate,
+                        consent: true
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Show success screen
+                    formCard.style.display = 'none';
+                    successCard.style.display = 'block';
+                } else {
+                    statusMessage.className = 'status-message error';
+                    statusMessage.textContent = result.error || 'אירעה שגיאה. נסה שוב.';
+                    submitBtn.disabled = false;
+                }
+            } catch (error) {
+                statusMessage.className = 'status-message error';
+                statusMessage.textContent = 'שגיאת תקשורת. בדוק את החיבור לאינטרנט.';
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
+
