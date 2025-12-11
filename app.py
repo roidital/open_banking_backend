@@ -8,6 +8,7 @@ Supports multiple bank/card accounts per user.
 import os
 import logging
 import requests
+import threading
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, redirect
 from flask_cors import CORS
@@ -198,7 +199,7 @@ def submit_credentials():
 def scrape_job():
     """
     Internal endpoint called by scheduler to run daily scrape jobs.
-    Iterates over all user accounts with scraping enabled.
+    Returns immediately and runs scraping in background thread.
     Requires scheduler secret for authentication.
     """
     try:
@@ -209,14 +210,39 @@ def scrape_job():
         if auth_header != expected:
             return jsonify({'error': 'Unauthorized'}), 401
         
+        # Get count of accounts to process (for the response)
+        enabled_accounts = get_all_enabled_accounts()
+        account_count = len(enabled_accounts)
+        
+        # Start background thread for scraping
+        thread = threading.Thread(target=run_scrape_job_background)
+        thread.daemon = True
+        thread.start()
+        
+        # Return immediately
+        logger.info(f"Scrape job started in background for {account_count} accounts")
+        return jsonify({
+            'status': 'started',
+            'message': f'Scrape job started in background for {account_count} accounts'
+        })
+    
+    except Exception as e:
+        logger.error(f"Error starting scrape_job: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+def run_scrape_job_background():
+    """Run the actual scraping in background thread."""
+    try:
+        logger.info("Background scrape job started")
+        
         # Get all accounts with scraping enabled
         enabled_accounts = get_all_enabled_accounts()
         
         results = {
             'processed': 0,
             'success': 0,
-            'failed': 0,
-            'errors': []
+            'failed': 0
         }
         
         for user_id, company_id, account_data in enabled_accounts:
@@ -228,7 +254,7 @@ def scrape_job():
                 
                 if not encrypted:
                     results['failed'] += 1
-                    results['errors'].append(f'{user_id}/{company_id}: Missing credentials')
+                    logger.error(f'{user_id}/{company_id}: Missing credentials')
                     continue
                 
                 credentials = decrypt_credentials(encrypted)
@@ -245,19 +271,17 @@ def scrape_job():
                     results['success'] += 1
                 else:
                     results['failed'] += 1
-                    results['errors'].append(f'{user_id}/{company_id}: {scrape_result.get("error")}')
+                    logger.error(f'{user_id}/{company_id}: {scrape_result.get("error")}')
             
             except Exception as e:
                 results['failed'] += 1
-                results['errors'].append(f'{user_id}/{company_id}: {str(e)}')
+                logger.error(f'{user_id}/{company_id}: {str(e)}')
                 update_scraper_status(user_id, 'error', str(e), company_id=company_id)
         
-        logger.info(f"Scrape job completed: {results['success']}/{results['processed']} successful")
-        return jsonify(results)
+        logger.info(f"Background scrape job completed: {results['success']}/{results['processed']} successful")
     
     except Exception as e:
-        logger.error(f"Error in scrape_job: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        logger.error(f"Error in background scrape job: {e}")
 
 
 @app.route('/status/<user_id>', methods=['GET'])
